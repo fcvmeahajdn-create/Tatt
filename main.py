@@ -15,11 +15,8 @@ REAL_API_URL = "https://draw.ar-lottery01.com/WinGo/WinGo_1M/GetHistoryIssuePage
 
 def load_history():
     if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r") as f:
-                return json.load(f)
-        except:
-            return []
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
     return []
 
 def save_history(history):
@@ -27,15 +24,26 @@ def save_history(history):
         json.dump(history, f, indent=4)
 
 def calculate_period_simple():
+    # Get current UTC time
     utc_now = datetime.datetime.now(datetime.timezone.utc)
+    
+    # Calculate total minutes since midnight
     total_minutes = utc_now.hour * 60 + utc_now.minute
+    
+    # Format date as yyyyMMdd
     date_str = utc_now.strftime("%Y%m%d")
+    
+    # Format suffix
     period_suffix = 10001 + total_minutes
+    
+    # Combine everything
     return date_str + "1000" + str(period_suffix)
 
 def get_real_result_map():
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
         response = requests.get(REAL_API_URL, headers=headers, timeout=10)
         data = response.json()
         results_map = {}
@@ -46,17 +54,18 @@ def get_real_result_map():
             if num_val is not None:
                 results_map[issue] = "BIG" if int(num_val) >= 5 else "SMALL"
         return results_map
-    except:
+    except Exception as e:
+        print(f"Fetch Error: {e}")
         return {}
 
 def background_predictor():
-    print("API is LIVE and Syncing...")
+    print("Background Sync Started...")
     while True:
         try:
             history = load_history()
             current_period = calculate_period_simple()
             
-            # Check for current period
+            # 1. Check if current period already exists
             if not any(entry.get("period no") == current_period for entry in history):
                 random.seed(current_period)
                 pred = random.choice(["BIG", "SMALL"])
@@ -70,30 +79,49 @@ def background_predictor():
                 }
                 history.append(new_entry)
 
-            # Update all PENDING or missing results
+            # 2. Sync PENDING results with Real API
             real_data = get_real_result_map()
             if real_data:
                 updated = False
                 for entry in history:
                     p_no = entry.get("period no")
-                    if entry.get("result", "PENDING") == "PENDING" and p_no in real_data:
+                    if entry.get("result") == "PENDING" and p_no in real_data:
                         actual = real_data[p_no]
                         entry["result"] = "WIN" if entry["prediction"] == actual else "LOSS"
                         updated = True
                 
                 if updated:
-                    save_history(history[-100:])
-            else:
-                # Save new entries even if real_data is empty
-                save_history(history[-100:])
+                    # Save only if something changed
+                    pass
+
+            # Max 100 records and save
+            save_history(history[-100:])
 
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Background Error: {e}")
             
-        time.sleep(15) 
+        time.sleep(20) # Sync every 20 seconds
 
-# --- RENDER PAR CHALANE KE LIYE YE ZARURI HAI ---
-# Threading ko if __name__ == '__main__': se bahar rakha hai
+@app.route('/')
+def home():
+    return "API is Running! Go to /predict to see results."
+
+@app.route('/predict', methods=['GET'])
+def get_prediction():
+    return jsonify(load_history()[::-1])
+
+if __name__ == '__main__':
+    # Start background thread
+    t = threading.Thread(target=background_predictor)
+    t.daemon = True
+    t.start()
+    
+    # RAILWAY PORT CONFIGURATION
+    # Railway hamesha PORT variable deta hai, agar nahi mile toh default 5000
+    port = int(os.environ.get("PORT", 5000))Sun phir toh niche 
+
+
+# --- CHANGE 1: Thread ko if block se bahar nikala ---
 t = threading.Thread(target=background_predictor)
 t.daemon = True
 t.start()
@@ -106,7 +134,11 @@ def home():
 def get_prediction():
     return jsonify(load_history()[::-1])
 
+# --- CHANGE 2: Port fix for Render ---
 if __name__ == '__main__':
-    # Render hamesha PORT environment variable provide karta hai
     port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
+
+
+Ye lagane pr he ho jayega ??
     app.run(host='0.0.0.0', port=port)
