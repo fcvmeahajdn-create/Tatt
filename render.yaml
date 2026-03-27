@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: my-prediction-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn main:app
+    
