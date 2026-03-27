@@ -1,4 +1,3 @@
-
 import json
 import os
 import datetime
@@ -16,8 +15,11 @@ REAL_API_URL = "https://draw.ar-lottery01.com/WinGo/WinGo_1M/GetHistoryIssuePage
 
 def load_history():
     if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
+        try:
+            with open(DATA_FILE, "r") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            return [] # Agar file empty ya corrupt ho toh error na aaye
     return []
 
 def save_history(history):
@@ -103,6 +105,12 @@ def background_predictor():
             
         time.sleep(20) # Sync every 20 seconds
 
+# --- Yahan se Threading start ki hai taaki Gunicorn ise run kar sake ---
+t = threading.Thread(target=background_predictor)
+t.daemon = True
+t.start()
+
+# --- Routes ---
 @app.route('/')
 def home():
     return "API is Running! Go to /predict to see results."
@@ -112,12 +120,5 @@ def get_prediction():
     return jsonify(load_history()[::-1])
 
 if __name__ == '__main__':
-    # Start background thread
-    t = threading.Thread(target=background_predictor)
-    t.daemon = True
-    t.start()
-    
-    # RAILWAY PORT CONFIGURATION
-    # Railway hamesha PORT variable deta hai, agar nahi mile toh default 5000
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
